@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Rutas posibles con Mapbox</title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+  <script src='https://api.mapbox.com/mapbox-gl-js/v2.4.1/mapbox-gl.js'></script>
+  <link href='https://api.mapbox.com/mapbox-gl-js/v2.4.1/mapbox-gl.css' rel='stylesheet' />
+  <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.0/mapbox-gl-directions.js'></script>
+  <link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.0/mapbox-gl-directions.css' type='text/css' />
+  <script src="https://www.gstatic.com/firebasejs/8.4.3/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.4.3/firebase-database.js"></script>
+  <script src="https://unpkg.com/@turf/turf"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.0/mapbox-gl-geocoder.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+    }
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+    }
+    .mapboxgl-ctrl-directions {
+      margin-top: 50px;
+    }
+  </style>
+</head>
+<body>
+  <div id='map'></div>
+  <script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoibGVnczMwMDExIiwiYSI6ImNsZzFwZXB4bzFpdnIzanBoZzViaGtjYWUifQ.ON0Tap8KMh2TCgZ-m6otDg';
+
+    var map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/streets-v11',
+      center: [-66.1599281,-17.3836435], // emi
+      zoom: 15
+    });
+
+    var marker = new mapboxgl.Marker()
+    .setLngLat([-66.1599281,-17.3836435])
+    .addTo(map);
+    
+    
+
+    var directions = new MapboxDirections({
+      accessToken: mapboxgl.accessToken,
+      unit: 'metric',
+      profile: 'mapbox/driving',
+      alternatives: true // Permite dibujar varias rutas posibles
+    });
+
+    map.addControl(directions, 'top-left');
+    
+    var config = {
+        apiKey: "AIzaSyBu9i7XfQ-Ts7HX-5Op8l8YLjGnSZ-Af6A",
+        authDomain: "geolocalizacion-e994b.firebaseapp.com",
+        databaseURL: "https://geolocalizacion-e994b.firebaseio.com",
+        projectId: "geolocalizacion-e994b",
+        storageBucket: "geolocalizacion-e994b.appspot.com",
+        messagingSenderId: "697593689238",
+        appId: "1:697593689238:web:3379a0558c616f52d8feb7",
+        measurementId: "G-D6DHGYMWG0"
+    };
+  
+  firebase.initializeApp(config);
+
+    // Obtener una referencia a la base de datos de Firebase
+    var database = firebase.database();
+    var ref = database.ref("1702-GIK");
+
+    var customData = {
+        'features': [
+        {
+            'type': 'Feature',
+            'properties': {
+                'title': 'Batallon de Transporte La Paz'
+            },
+        'geometry': {
+            'coordinates': [-74.14476235609635,4.730750597247051],
+            'type': 'Point'
+            }
+        },
+        {
+            'type': 'Feature',
+            'properties': {
+                'title': 'Batallon de Transporte Santa Cruz'
+            },
+        'geometry': {
+            'coordinates': [-63.165804,-17.7773623],
+            'type': 'Point'
+            }
+        },
+        {
+            'type': 'Feature',
+            'properties': {
+                'title': 'Batallon de Transporte Cochabamaba'
+            },
+        'geometry': {
+            'coordinates': [-76.29526180284667,1.8879367358700043],
+            'type': 'Point'
+            }
+        }
+        ],
+        'type': 'FeatureCollection'
+    };
+    var lineCoordinates = [];
+
+    ref.on("child_added", function(snapshot) {
+      var data = snapshot.val();
+      console.log(data);
+      if (data.lat) {
+        var lat = data.lat;
+        var lng = data.lng;
+        var newCoords = [lng, lat];
+    
+        // Add the new coordinates to the lineCoordinates array
+        lineCoordinates.push(newCoords);
+    
+        // Remove the first coordinate if the array has more than two coordinates
+        if (lineCoordinates.length > 50000) {
+          lineCoordinates.shift();
+        }
+    
+        var lineString = turf.lineString(lineCoordinates);
+    
+        // Add the lineString to the map
+        if (map.getSource('line')) {
+          map.getSource('line').setData(lineString);
+        } else {
+          map.addSource('line', {
+            type: 'geojson',
+            data: lineString,
+          });
+          map.addLayer({
+            id: 'line',
+            type: 'line',
+            source: 'line',
+            layout: {
+              'line-cap': 'round',
+              'line-join': 'round',
+            },
+            paint: {
+              'line-color': '#2E10FF',
+              'line-width': 5,
+              'line-opacity': 0.8,
+            },
+          });
+        }
+    
+        // Update the marker position
+        marker.setLngLat(newCoords);
+    
+        console.log("Nueva posición: lat=" + lat + ", lng=" + lng);
+      } else {
+        console.log("No se encontró la propiedad 'posicion' en los datos de Firebase");
+      }
+    });
+    //ubicacion
+   
+    function forwardGeocoder(query) {
+        var matchingFeatures = [];
+        for (var i = 0; i < customData.features.length; i++) {
+            var feature = customData.features[i];
+            // Handle queries with different capitalization
+            // than the source data by calling toLowerCase().
+            if (
+                feature.properties.title
+                    .toLowerCase()
+                    .search(query.toLowerCase()) !== -1
+            ) {
+                // Add a tree emoji as a prefix for custom
+                // data results using carmen geojson format:
+                // https://github.com/mapbox/carmen/blob/master/carmen-geojson.md
+                feature['place_name'] = '🌲 ' + feature.properties.title;
+                feature['center'] = feature.geometry.coordinates;
+                feature['place_type'] = ['park'];
+                matchingFeatures.push(feature);
+                }
+        }
+        return matchingFeatures;
+    }
+    map.addControl(
+        new MapboxGeocoder({
+            accessToken: mapboxgl.accessToken,
+            localGeocoder: forwardGeocoder,
+            zoom: 14,
+            placeholder: 'Ingrese un lugara buscar',
+            mapboxgl: mapboxgl
+        })
+    );
+  </script>
+</body>
+</html>
